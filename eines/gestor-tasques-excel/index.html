@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consolidador de Tasques Excel</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- JSZip -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <!-- FileSaver.js -->
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#2563eb',
+                            600: '#1d4ed8',
+                            700: '#1e40af',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col justify-between">
+
+    <!-- Header Navbar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-brand-500 text-white rounded-lg shadow-sm">
+                    <i class="fa-solid fa-file-excel text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight text-slate-900">Consolidador de Tasques Excel</h1>
+                    <p class="text-xs text-slate-500">Unifica qualsevol nombre de fitxers Excel i agrupa per usuari</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <span class="text-xs font-medium px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
+                    <i class="fa-solid fa-shield-halved mr-1"></i> Processament Local i Segur
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full">
+
+        <!-- Upload & Config Section -->
+        <section id="uploadSection" class="mb-8 space-y-6">
+            <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200">
+                <div class="max-w-3xl mx-auto text-center mb-6">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-2">Carrega els arxius Excel d'origen</h2>
+                    <p class="text-sm text-slate-600">
+                        Pots carregar <strong>1 o més arxius Excel</strong>. L'aplicació trobarà automàticament les columnes d'usuari i data, no importa en quina posició estiguin situades.
+                    </p>
+                </div>
+
+                <!-- Drag & Drop Zone -->
+                <div id="dropZone" class="border-2 border-dashed border-slate-300 hover:border-brand-500 bg-slate-50/50 hover:bg-brand-50/30 transition-all rounded-xl p-8 text-center cursor-pointer relative group">
+                    <input type="file" id="fileInput" multiple accept=".xlsx, .xls" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" />
+                    
+                    <div class="flex flex-col items-center justify-center space-y-3">
+                        <div class="w-14 h-14 rounded-full bg-brand-50 group-hover:bg-brand-100 flex items-center justify-center text-brand-500 transition-colors">
+                            <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-base font-semibold text-slate-700">Arrossega els teus arxius Excel aquí o <span class="text-brand-500 underline">fés clic per seleccionar-los</span></p>
+                            <p class="text-xs text-slate-400 mt-1">Sosté qualsevol quantitat de fitxers `.xlsx` o `.xls`</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Selected Files List -->
+                <div id="fileList" class="mt-4 hidden">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Arxius seleccionats:</h3>
+                        <button id="clearAllFiles" class="text-xs text-red-500 hover:underline">Netejar tots</button>
+                    </div>
+                    <div id="fileItems" class="space-y-2 max-h-48 overflow-y-auto p-1"></div>
+                </div>
+
+                <!-- Column Mapping Area (Appears after file load) -->
+                <div id="columnMappingSection" class="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl hidden">
+                    <h4 class="text-sm font-semibold text-slate-800 mb-2 flex items-center">
+                        <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Confirmació de Columnes
+                    </h4>
+                    <p class="text-xs text-slate-500 mb-4">S'han detectat aquestes columnes. Pots ajustar quina s'utilitzarà com a usuari i com a data si no coincideixen exactament:</p>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Columna d'Usuari (`ad_usuari`):</label>
+                            <select id="userColSelect" class="w-full text-xs bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Columna de Data (`aa_fecha`):</label>
+                            <select id="dateColSelect" class="w-full text-xs bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Process Button -->
+                <div class="mt-6 text-center">
+                    <button id="processBtn" disabled class="px-6 py-3 bg-brand-500 hover:bg-brand-600 disabled:bg-slate-300 text-white font-medium rounded-xl shadow-sm transition-all flex items-center justify-center space-x-2 mx-auto disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-gears"></i>
+                        <span>Processar i Agrupar Tasques</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loader -->
+        <div id="loader" class="hidden my-12 text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-brand-500 mb-3"></div>
+            <p class="text-slate-600 font-medium">Consolidant dades, aplicant format de dates i organitzant usuaris...</p>
+        </div>
+
+        <!-- Dashboard / Results Section -->
+        <section id="resultsSection" class="hidden space-y-6">
+
+            <!-- Summary Bar -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                    <div class="p-3 bg-blue-50 text-blue-600 rounded-lg">
+                        <i class="fa-solid fa-folder-open text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium uppercase">Fitxers Carregats</p>
+                        <p id="statTotalFiles" class="text-2xl font-bold text-slate-800">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                    <div class="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
+                        <i class="fa-solid fa-list-check text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium uppercase">Total Tasques Úniques</p>
+                        <p id="statTotalTasks" class="text-2xl font-bold text-slate-800">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                    <div class="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+                        <i class="fa-solid fa-users text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium uppercase">Usuaris Únics</p>
+                        <p id="statTotalUsers" class="text-2xl font-bold text-slate-800">0</p>
+                    </div>
+                </div>
+
+                <!-- Export ZIP Button -->
+                <div class="bg-gradient-to-br from-brand-500 to-brand-700 p-5 rounded-xl text-white shadow-sm flex flex-col justify-between">
+                    <div>
+                        <p class="text-xs text-brand-100 font-medium uppercase">Descarregar Tot</p>
+                        <p class="text-xs opacity-90">Paquet ZIP amb tots els usuaris + Resum</p>
+                    </div>
+                    <button id="downloadZipBtn" class="mt-3 w-full py-2 bg-white text-brand-600 hover:bg-brand-50 font-bold rounded-lg shadow text-xs transition-colors flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-file-zipper"></i>
+                        <span>Descarregar ZIP</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Interactive View -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- Users List Sidebar -->
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col h-[650px]">
+                    <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50 rounded-t-xl">
+                        <h3 class="font-bold text-slate-800 text-sm flex items-center space-x-2">
+                            <i class="fa-solid fa-user-group text-slate-400"></i>
+                            <span>Llista d'Usuaris</span>
+                        </h3>
+                        <button id="downloadSummaryBtn" title="Descarregar resum general Excel" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-1.5 rounded-lg transition-colors flex items-center space-x-1 font-medium">
+                            <i class="fa-solid fa-file-excel"></i>
+                            <span>Resum Excel</span>
+                        </button>
+                    </div>
+
+                    <!-- Search Input -->
+                    <div class="p-3 border-b border-slate-100">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                            <input type="text" id="userSearch" placeholder="Cercar usuari..." class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+                        </div>
+                    </div>
+
+                    <!-- User List Scroll Area -->
+                    <div id="usersListContainer" class="divide-y divide-slate-100 overflow-y-auto flex-grow"></div>
+                </div>
+
+                <!-- User Tasks Table -->
+                <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col h-[650px]">
+                    
+                    <!-- Detail Header -->
+                    <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-50/50 rounded-t-xl gap-2 sm:gap-0">
+                        <div>
+                            <h3 id="currentUserName" class="font-bold text-slate-800 text-base">Selecciona un usuari</h3>
+                            <p id="currentUserTaskCount" class="text-xs text-slate-500">Visualitza el detall de les tasques pendents</p>
+                        </div>
+                        <button id="downloadSingleUserBtn" disabled class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white font-medium text-xs rounded-lg shadow-sm transition-all flex items-center space-x-1.5 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-download"></i>
+                            <span>Descarregar Excel Usuari</span>
+                        </button>
+                    </div>
+
+                    <!-- Table Wrapper -->
+                    <div class="flex-grow overflow-auto p-4">
+                        <table id="tasksTable" class="w-full text-left border-collapse text-xs">
+                            <thead id="tasksTableHead" class="sticky top-0 bg-slate-100 text-slate-600 font-semibold uppercase tracking-wider text-[11px] border-b border-slate-200">
+                                <tr>
+                                    <th class="py-2.5 px-3">Data</th>
+                                    <th class="py-2.5 px-3">Descripció</th>
+                                    <th class="py-2.5 px-3">Alumne</th>
+                                    <th class="py-2.5 px-3">Estudis</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tasksTableBody" class="divide-y divide-slate-100 text-slate-700">
+                                <tr>
+                                    <td colspan="4" class="text-center py-12 text-slate-400">
+                                        <i class="fa-solid fa-arrow-left mr-1"></i> Selecciona un usuari de la llista esquerra.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400">
+            Eina de processament local d'Excel &bull; No s'envia cap dada a cap servidor exterior.
+        </div>
+    </footer>
+
+    <!-- JS Logic -->
+    <script>
+        let uploadedFiles = [];
+        let parsedRawRows = [];
+        let detectedColumns = [];
+        let groupedUserData = {};
+        let currentSelectedUser = null;
+
+        // DOM Elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const fileItems = document.getElementById('fileItems');
+        const clearAllFiles = document.getElementById('clearAllFiles');
+        const processBtn = document.getElementById('processBtn');
+        const columnMappingSection = document.getElementById('columnMappingSection');
+        const userColSelect = document.getElementById('userColSelect');
+        const dateColSelect = document.getElementById('dateColSelect');
+
+        const loader = document.getElementById('loader');
+        const resultsSection = document.getElementById('resultsSection');
+
+        const statTotalFiles = document.getElementById('statTotalFiles');
+        const statTotalTasks = document.getElementById('statTotalTasks');
+        const statTotalUsers = document.getElementById('statTotalUsers');
+        const usersListContainer = document.getElementById('usersListContainer');
+        const userSearch = document.getElementById('userSearch');
+
+        const currentUserName = document.getElementById('currentUserName');
+        const currentUserTaskCount = document.getElementById('currentUserTaskCount');
+        const tasksTableHead = document.getElementById('tasksTableHead');
+        const tasksTableBody = document.getElementById('tasksTableBody');
+
+        const downloadZipBtn = document.getElementById('downloadZipBtn');
+        const downloadSummaryBtn = document.getElementById('downloadSummaryBtn');
+        const downloadSingleUserBtn = document.getElementById('downloadSingleUserBtn');
+
+        // Handlers
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-brand-500', 'bg-brand-50/40');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-brand-500', 'bg-brand-50/40'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-brand-500', 'bg-brand-50/40');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        clearAllFiles.addEventListener('click', () => {
+            uploadedFiles = [];
+            renderFileList();
+            columnMappingSection.classList.add('hidden');
+        });
+
+        async function handleFiles(files) {
+            for (let file of files) {
+                if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                    if (!uploadedFiles.some(f => f.name === file.name && f.size === file.size)) {
+                        uploadedFiles.push(file);
+                    }
+                }
+            }
+            renderFileList();
+            if (uploadedFiles.length > 0) {
+                await inspectFileHeaders();
+            }
+        }
+
+        function renderFileList() {
+            fileItems.innerHTML = '';
+            if (uploadedFiles.length > 0) {
+                fileList.classList.remove('hidden');
+                processBtn.disabled = false;
+
+                uploadedFiles.forEach((file, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center justify-between bg-slate-100 px-3 py-2 rounded-lg text-xs';
+                    div.innerHTML = `
+                        <div class="flex items-center space-x-2 truncate">
+                            <i class="fa-solid fa-file-excel text-emerald-600 text-sm"></i>
+                            <span class="font-medium text-slate-700 truncate">${file.name}</span>
+                            <span class="text-slate-400">(${Math.round(file.size / 1024)} KB)</span>
+                        </div>
+                        <button onclick="removeFile(${index})" class="text-slate-400 hover:text-red-500 ml-2">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    `;
+                    fileItems.appendChild(div);
+                });
+            } else {
+                fileList.classList.add('hidden');
+                processBtn.disabled = true;
+                columnMappingSection.classList.add('hidden');
+            }
+        }
+
+        window.removeFile = function(index) {
+            uploadedFiles.splice(index, 1);
+            renderFileList();
+            if (uploadedFiles.length === 0) {
+                columnMappingSection.classList.add('hidden');
+            }
+        }
+
+        // Inspect headers across files
+        async function inspectFileHeaders() {
+            detectedColumns = new Set();
+            for (let file of uploadedFiles) {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+                if (json.length > 0) {
+                    Object.keys(json[0]).forEach(col => detectedColumns.add(col));
+                }
+            }
+
+            const colArray = Array.from(detectedColumns);
+            if (colArray.length === 0) return;
+
+            // Populate selects
+            userColSelect.innerHTML = '';
+            dateColSelect.innerHTML = '';
+
+            colArray.forEach(col => {
+                userColSelect.add(new Option(col, col));
+                dateColSelect.add(new Option(col, col));
+            });
+
+            // Smart detection
+            const autoUser = colArray.find(c => c.toLowerCase().includes('ad_usuari') || c.toLowerCase().includes('usuari') || c.toLowerCase().includes('user')) || colArray[0];
+            const autoDate = colArray.find(c => c.toLowerCase().includes('aa_fecha') || c.toLowerCase().includes('fecha') || c.toLowerCase().includes('data') || c.toLowerCase().includes('date')) || colArray[0];
+
+            userColSelect.value = autoUser;
+            dateColSelect.value = autoDate;
+
+            columnMappingSection.classList.remove('hidden');
+        }
+
+        // Parse date helper: YYYYMMDDhhmmss -> DD/MM/YYYY
+        function parseAndFormatDate(val) {
+            if (!val) return '';
+            const str = String(val).trim();
+            if (str.length >= 8 && /^\d+$/.test(str)) {
+                const year = str.substring(0, 4);
+                const month = str.substring(4, 6);
+                const day = str.substring(6, 8);
+                return `${day}/${month}/${year}`;
+            }
+            return str;
+        }
+
+        // Process Excel
+        processBtn.addEventListener('click', async () => {
+            if (uploadedFiles.length === 0) return;
+
+            loader.classList.remove('hidden');
+            processBtn.disabled = true;
+
+            setTimeout(async () => {
+                try {
+                    await processExcelData();
+                    loader.classList.add('hidden');
+                    resultsSection.classList.remove('hidden');
+                    resultsSection.scrollIntoView({ behavior: 'smooth' });
+                } catch (error) {
+                    alert('Error en processar els fitxers: ' + error.message);
+                    loader.classList.add('hidden');
+                    processBtn.disabled = false;
+                }
+            }, 200);
+        });
+
+        async function processExcelData() {
+            const userKey = userColSelect.value;
+            const dateKey = dateColSelect.value;
+
+            let allRows = [];
+
+            for (let file of uploadedFiles) {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+                jsonData.forEach(row => {
+                    const user = String(row[userKey] || 'SENSE_USUARI').trim();
+                    const rawDate = row[dateKey] || '';
+                    const formattedDate = parseAndFormatDate(rawDate);
+
+                    // Clone row and set formatted date & user
+                    let cleanRow = { ...row };
+                    cleanRow[userKey] = user;
+                    cleanRow[dateKey] = formattedDate;
+
+                    // Build string signature for deduplication
+                    const signature = Object.values(cleanRow).join('|');
+
+                    if (user && user !== 'SENSE_USUARI') {
+                        allRows.push({
+                            _user: user,
+                            _signature: signature,
+                            _row: cleanRow
+                        });
+                    }
+                });
+            }
+
+            // Deduplicate exact matching rows
+            const uniqueMap = new Map();
+            allRows.forEach(item => {
+                if (!uniqueMap.has(item._signature)) {
+                    uniqueMap.set(item._signature, item);
+                }
+            });
+
+            const uniqueRows = Array.from(uniqueMap.values());
+
+            // Group by User
+            groupedUserData = {};
+            uniqueRows.forEach(item => {
+                const u = item._user;
+                if (!groupedUserData[u]) {
+                    groupedUserData[u] = [];
+                }
+                groupedUserData[u].push(item._row);
+            });
+
+            // Stats
+            statTotalFiles.textContent = uploadedFiles.length;
+            statTotalTasks.textContent = uniqueRows.length.toLocaleString();
+            statTotalUsers.textContent = Object.keys(groupedUserData).length;
+
+            renderUserList();
+        }
+
+        function renderUserList(filter = '') {
+            usersListContainer.innerHTML = '';
+            
+            const users = Object.keys(groupedUserData).sort((a, b) => {
+                return groupedUserData[b].length - groupedUserData[a].length;
+            });
+
+            const filteredUsers = users.filter(u => u.toLowerCase().includes(filter.toLowerCase()));
+
+            if (filteredUsers.length === 0) {
+                usersListContainer.innerHTML = `<p class="p-4 text-xs text-slate-400 text-center">Cap usuari trobat</p>`;
+                return;
+            }
+
+            filteredUsers.forEach(user => {
+                const count = groupedUserData[user].length;
+                const div = document.createElement('div');
+                div.className = `p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors border-l-4 ${currentSelectedUser === user ? 'bg-brand-50/60 border-brand-500 font-semibold' : 'border-transparent'}`;
+                
+                div.onclick = () => selectUser(user);
+
+                div.innerHTML = `
+                    <div class="truncate pr-2">
+                        <p class="text-xs text-slate-800 truncate">${user}</p>
+                    </div>
+                    <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${currentSelectedUser === user ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-600'}">
+                        ${count}
+                    </span>
+                `;
+                usersListContainer.appendChild(div);
+            });
+        }
+
+        userSearch.addEventListener('input', (e) => renderUserList(e.target.value));
+
+        function selectUser(user) {
+            currentSelectedUser = user;
+            renderUserList(userSearch.value);
+
+            const tasks = groupedUserData[user] || [];
+            currentUserName.textContent = user;
+            currentUserTaskCount.textContent = `${tasks.length} tasques pendents assignades`;
+            downloadSingleUserBtn.disabled = false;
+
+            if (tasks.length === 0) return;
+
+            // Dynamic Table Headers based on actual object keys
+            const cols = Object.keys(tasks[0]);
+            tasksTableHead.innerHTML = `
+                <tr>
+                    ${cols.map(c => `<th class="py-2.5 px-3">${c}</th>`).join('')}
+                </tr>
+            `;
+
+            // Render Table Rows
+            tasksTableBody.innerHTML = '';
+            tasks.forEach(t => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/80 transition-colors';
+                tr.innerHTML = cols.map(c => `<td class="py-2.5 px-3 text-slate-700 whitespace-normal">${t[c] ?? ''}</td>`).join('');
+                tasksTableBody.appendChild(tr);
+            });
+        }
+
+        // Export Helper
+        function buildExcelWorkbook(dataArray, sheetName = 'Tasques') {
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(dataArray);
+
+            if (dataArray.length > 0) {
+                const cols = Object.keys(dataArray[0]).map(key => ({
+                    wch: Math.max(key.length + 5, 20)
+                }));
+                ws['!cols'] = cols;
+            }
+
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            return wb;
+        }
+
+        // Single User Export
+        downloadSingleUserBtn.addEventListener('click', () => {
+            if (!currentSelectedUser || !groupedUserData[currentSelectedUser]) return;
+            const tasks = groupedUserData[currentSelectedUser];
+            const wb = buildExcelWorkbook(tasks, 'Tasques Pendents');
+            const fileName = `Tasques_${currentSelectedUser.replace(/[/\\?%*:|"<>]/g, '_')}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+        });
+
+        // Summary Excel Export
+        downloadSummaryBtn.addEventListener('click', () => {
+            const userKey = userColSelect.value;
+            const summaryData = Object.keys(groupedUserData).map(user => ({
+                [userKey]: user,
+                'Total Tasques Pendents': groupedUserData[user].length
+            })).sort((a, b) => b['Total Tasques Pendents'] - a['Total Tasques Pendents']);
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(summaryData);
+            ws['!cols'] = [{ wch: 35 }, { wch: 22 }];
+            XLSX.utils.book_append_sheet(wb, ws, 'Resum General');
+
+            XLSX.writeFile(wb, '00_Resum_General_Tots_els_Usuaris.xlsx');
+        });
+
+        // ZIP Export
+        downloadZipBtn.addEventListener('click', async () => {
+            const zip = new JSZip();
+            const userKey = userColSelect.value;
+
+            // 1. Summary File
+            const summaryData = Object.keys(groupedUserData).map(user => ({
+                [userKey]: user,
+                'Total Tasques Pendents': groupedUserData[user].length
+            })).sort((a, b) => b['Total Tasques Pendents'] - a['Total Tasques Pendents']);
+
+            const summaryWb = XLSX.utils.book_new();
+            const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+            summaryWs['!cols'] = [{ wch: 35 }, { wch: 22 }];
+            XLSX.utils.book_append_sheet(summaryWb, summaryWs, 'Resum General');
+            const summaryBuffer = XLSX.write(summaryWb, { bookType: 'xlsx', type: 'array' });
+            zip.file('00_Resum_General_Tots_els_Usuaris.xlsx', summaryBuffer);
+
+            // 2. Individual User Files
+            for (let user of Object.keys(groupedUserData)) {
+                const tasks = groupedUserData[user];
+                const wb = buildExcelWorkbook(tasks, 'Tasques Pendents');
+                const fileBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                const fileName = `Tasques_${user.replace(/[/\\?%*:|"<>]/g, '_')}.xlsx`;
+                zip.file(fileName, fileBuffer);
+            }
+
+            downloadZipBtn.disabled = true;
+            downloadZipBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Generant ZIP...`;
+
+            try {
+                const content = await zip.generateAsync({ type: 'blob' });
+                saveAs(content, 'Tasques_Pendents_Per_Usuari.zip');
+            } catch (err) {
+                alert('Error en crear el ZIP: ' + err.message);
+            } finally {
+                downloadZipBtn.disabled = false;
+                downloadZipBtn.innerHTML = `
+                    <i class="fa-solid fa-file-zipper"></i>
+                    <span>Descarregar ZIP</span>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
